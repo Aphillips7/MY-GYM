@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>MYGYM</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{background:#080812;color:#e0e0f0;font-family:'Inter',system-ui,sans-serif;overscroll-behavior:none;}
+  input,textarea,select{font-family:inherit;}
+  input[type=number]::-webkit-inner-spin-button{opacity:1;}
+  ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:#0d0d1f;} ::-webkit-scrollbar-thumb{background:#2a2a44;border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── CONFIG — cambiá esta URL por la tuya de Apps Script ──────────────────────
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJyODJy2h9CI8HatJXxLy-xaJMcPq9T1bCQ1JqmOjT2gbt2AFn28AESYZ9qwg3mL78/exec";
+const LOCAL_KEY  = "mygym_v1";
+const WEEK_COUNT = 12;
+const WEEKS      = Array.from({length:WEEK_COUNT},(_,i)=>`Semana ${i+1}`);
+const DAY_COLORS = ["#e85d2f","#2f7ee8","#27a86e","#c94fca","#e8a62f","#4fc9ca"];
+
+// ── persistence ───────────────────────────────────────────────────────────────
+const loadLocal = () => { try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||"{}");}catch{return{};} };
+const saveLocal = d => { try{localStorage.setItem(LOCAL_KEY,JSON.stringify(d));}catch{} };
+const mkDefault = () => ({
+  days:[
+    {id:"d1",label:"Día 1",focus:"",exercises:[]},
+    {id:"d2",label:"Día 2",focus:"",exercises:[]},
+    {id:"d3",label:"Día 3",focus:"",exercises:[]},
+    {id:"d4",label:"Día 4",focus:"",exercises:[]},
+    {id:"d5",label:"Día 5",focus:"",exercises:[]},
+    {id:"d6",label:"Día 6",focus:"",exercises:[]},
+  ],
+  logs:{}, notes:{},
+});
+const uid = () => Math.random().toString(36).slice(2,8);
+
+// ── Google Sheets sync (fetch directo — funciona fuera de iframe) ─────────────
+async function sheetsPost(data) {
+  const res = await fetch(SCRIPT_URL, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(data),
+    mode:"cors",
+  });
+  return res.ok;
+}
+async function sheetsGet() {
+  const res = await fetch(SCRIPT_URL+"?t="+Date.now(), { mode:"cors" });
+  const text = await res.text();
+  if(!text||text==="{}") return null;
+  return JSON.parse(text);
+}
+
+// ── tiny components ───────────────────────────────────────────────────────────
+const Chip = ({bg,color,text}) => (
+  <span style={{background:bg,color,fontSize:10,fontWeight:600,
+    padding:"2px 8px",borderRadius:10,border:`1px solid ${color}40`,whiteSpace:"nowrap"}}>
+    {text}
+  </span>
+);
+
+const Btn = ({children,onClick,color="#e85d2f",outline,small,disabled,style={}}) => (
+  <button onClick={onClick} disabled={disabled} style={{
+    padding:small?"5px 12px":"9px 18px", borderRadius:8,
+    border:outline?`1px solid ${color}60`:"none",
+    background:outline?"transparent":disabled?"#1e1e2e":color,
+    color:outline?color:disabled?"#555":"#fff",
+    fontSize:small?11:13, fontWeight:600,
+    cursor:disabled?"not-allowed":"pointer",
+    transition:"all .15s", ...style,
+  }}>{children}</button>
+);
+
+const Modal = ({title,onClose,children}) => (
+  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.9)",zIndex:200,
+    display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 0 0 0"}}
+    onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div style={{background:"#0d0d1f",borderRadius:"16px 16px 0 0",border:"1px solid #2a2a44",
+      width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto",padding:20,
+      paddingBottom:"calc(20px + env(safe-area-inset-bottom))"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <span style={{fontSize:15,fontWeight:700,color:"#fff"}}>{title}</span>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#555",fontSize:22,cursor:"pointer",lineHeight:1}}>✕</button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const Field = ({label,children}) => (
+  <div style={{marginBottom:14}}>
+    <div style={{fontSize:11,color:"#666",marginBottom:5}}>{label}</div>
+    {children}
+  </div>
+);
+
+const iSt = {width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #2a2a40",
+  background:"#080812",color:"#e0e0f0",fontSize:13,outline:"none",boxSizing:"border-box"};
+const sSt = {width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid #2a2a40",
+  background:"#0d0d1f",color:"#e0e0f0",fontSize:13,outline:"none"};
+const cSt = {width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #1e1e32",
+  background:"#080812",color:"#e0e0f0",fontSize:13,outline:"none",boxSizing:"border-box"};
+
+// ── main app ──────────────────────────────────────────────────────────────────
+function App() {
+  const [data,    setData]    = useState(()=>{const s=loadLocal();return s.days?s:mkDefault();});
+  const [tab,     setTab]     = useState("rutina");
+  const [selDay,  setSelDay]  = useState(0);
+  const [selWeek, setSelWeek] = useState(0);
+  const [syncSt,  setSyncSt]  = useState("idle");
+  const [toast,   setToast]   = useState(null);
+  const [editDayModal,setEditDayModal] = useState(null);
+  const [editExModal, setEditExModal]  = useState(null);
+  const [dayForm, setDayForm] = useState({});
+  const [exForm,  setExForm]  = useState({});
+
+  const showToast = (msg,ok=true) => { setToast({msg,ok}); setTimeout(()=>setToast(null),3500); };
+
+  const update = fn => {
+    setData(prev=>{
+      const next=fn(JSON.parse(JSON.stringify(prev)));
+      saveLocal(next);
+      return next;
+    });
+  };
+
+  // ── sync ────────────────────────────────────────────────────────────────────
+  const handleSave = async () => {
+    setSyncSt("saving");
+    try {
+      await sheetsPost(data);
+      setSyncSt("ok"); showToast("✅ Guardado en Google Sheets");
+    } catch(e) {
+      setSyncSt("error"); showToast("❌ Error al guardar",false);
+    }
+    setTimeout(()=>setSyncSt("idle"),4000);
+  };
+
+  const handleLoad = async () => {
+    setSyncSt("loading");
+    try {
+      const parsed = await sheetsGet();
+      if(!parsed){setSyncSt("ok");showToast("☁️ No hay datos en la nube aún");setTimeout(()=>setSyncSt("idle"),3000);return;}
+      if(!parsed.days) throw new Error();
+      setData(parsed); saveLocal(parsed);
+      setSyncSt("ok"); showToast("✅ Datos cargados desde Google Sheets");
+    } catch {
+      setSyncSt("error"); showToast("❌ Error al cargar",false);
+    }
+    setTimeout(()=>setSyncSt("idle"),4000);
+  };
+
+  // ── day editor ──────────────────────────────────────────────────────────────
+  const openDayEdit = i => { setDayForm({label:data.days[i].label,focus:data.days[i].focus}); setEditDayModal(i); };
+  const saveDayEdit = () => {
+    update(d=>{d.days[editDayModal].label=dayForm.label;d.days[editDayModal].focus=dayForm.focus;return d;});
+    setEditDayModal(null);
+  };
+
+  // ── exercise editor ─────────────────────────────────────────────────────────
+  const openNewEx  = di => { setExForm({name:"",sets:"3",reps:"8–12",rest:"90 seg",note:""}); setEditExModal({di,ei:null}); };
+  const openEditEx = (di,ei) => { setExForm({...data.days[di].exercises[ei]}); setEditExModal({di,ei}); };
+  const saveEx = () => {
+    const {di,ei}=editExModal;
+    update(d=>{
+      const ex={...exForm,id:exForm.id||uid()};
+      if(ei===null) d.days[di].exercises.push(ex);
+      else d.days[di].exercises[ei]=ex;
+      return d;
+    });
+    setEditExModal(null);
+  };
+  const deleteEx = (di,ei) => { if(!confirm("¿Eliminar este ejercicio?"))return; update(d=>{d.days[di].exercises.splice(ei,1);return d;}); };
+  const moveEx   = (di,ei,dir) => update(d=>{
+    const arr=d.days[di].exercises,to=ei+dir;
+    if(to<0||to>=arr.length)return d;
+    [arr[ei],arr[to]]=[arr[to],arr[ei]];return d;
+  });
+
+  // ── log helpers ─────────────────────────────────────────────────────────────
+  const lk     = (wi,did,ei,si) => `${wi}_${did}_${ei}_${si}`;
+  const getLog = (wi,did,ei,si) => data.logs[lk(wi,did,ei,si)]||{};
+  const setLog = (wi,did,ei,si,f,v) => update(d=>{const k=lk(wi,did,ei,si);d.logs[k]={...(d.logs[k]||{}),[f]:v};return d;});
+  const getNote= (wi,did) => data.notes[`${wi}_${did}`]||"";
+  const setNote= (wi,did,v) => update(d=>{d.notes[`${wi}_${did}`]=v;return d;});
+
+  const prevBest = (did,ei) => {
+    let best=0;
+    for(let wi=0;wi<selWeek;wi++) for(let si=0;si<10;si++){
+      const w=parseFloat(data.logs[lk(wi,did,ei,si)]?.weight)||0;
+      if(w>best)best=w;
+    }
+    return best;
+  };
+
+  const weekVolume = (di,wi) => {
+    const d=data.days[di];let t=0;
+    d.exercises.forEach((ex,ei)=>{
+      const sets=parseInt(ex.sets)||3;
+      for(let si=0;si<sets;si++){
+        const l=data.logs[lk(wi,d.id,ei,si)]||{};
+        t+=(parseFloat(l.weight)||0)*(parseFloat(l.reps)||0);
+      }
+    });
+    return t;
+  };
+
+  const day   = data.days[selDay]||data.days[0];
+  const color = DAY_COLORS[selDay%DAY_COLORS.length];
+  const totalEx = data.days.reduce((a,d)=>a+d.exercises.length,0);
+  const busy  = syncSt==="saving"||syncSt==="loading";
+
+  const syncColor = {idle:"#555",saving:"#e8a62f",loading:"#2f7ee8",ok:"#27a86e",error:"#e85d2f"}[syncSt]||"#555";
+  const syncText  = {idle:"☁️ Nube",saving:"⏳ Guardando...",loading:"⏳ Cargando...",ok:"✅ Sync OK",error:"❌ Error"}[syncSt]||"☁️";
+
+  return (
+    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#080812",minHeight:"100vh",color:"#e0e0f0",
+      paddingBottom:"env(safe-area-inset-bottom)"}}>
+
+      {/* toast */}
+      {toast&&(
+        <div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",
+          background:toast.ok?"#0a1f0a":"#1f0a0a",
+          border:`1px solid ${toast.ok?"#27a86e":"#e85d2f"}`,
+          color:"#e0e0f0",padding:"10px 20px",borderRadius:12,
+          fontSize:13,fontWeight:600,zIndex:300,whiteSpace:"nowrap",
+          boxShadow:"0 4px 24px rgba(0,0,0,.7)"}}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* header */}
+      <div style={{background:"linear-gradient(135deg,#0d0d1f,#12122a)",borderBottom:"1px solid #1e1e3a",
+        padding:"14px 16px",position:"sticky",top:0,zIndex:100,
+        paddingTop:"calc(14px + env(safe-area-inset-top))"}}>
+        <div style={{maxWidth:600,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:20,fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>
+              <span style={{color:"#e85d2f"}}>MY</span>GYM
+            </div>
+            <div style={{fontSize:10,color:"#444",marginTop:1}}>
+              {totalEx===0?"Configurá tu rutina en Editor →":`${totalEx} ejercicios · 6 días · Frecuencia 2`}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+            <span style={{fontSize:10,color:syncColor,fontWeight:600}}>{syncText}</span>
+            <div style={{display:"flex",gap:6}}>
+              <Btn small outline color="#2f7ee8" onClick={handleLoad} disabled={busy}>⬇ Cargar</Btn>
+              <Btn small color="#27a86e" onClick={handleSave} disabled={busy}>⬆ Guardar</Btn>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* tabs */}
+      <div style={{background:"#0d0d1f",borderBottom:"1px solid #1a1a30",position:"sticky",top:67,zIndex:99}}>
+        <div style={{maxWidth:600,margin:"0 auto",display:"flex"}}>
+          {[{id:"rutina",label:"Rutina"},{id:"entreno",label:"Entreno"},{id:"progreso",label:"Progreso"},{id:"builder",label:"Editor"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+              flex:1,padding:"12px 4px",border:"none",background:"transparent",
+              color:tab===t.id?"#e85d2f":"#555",
+              fontSize:12,fontWeight:tab===t.id?700:400,
+              borderBottom:tab===t.id?"2px solid #e85d2f":"2px solid transparent",
+              cursor:"pointer",
+            }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{maxWidth:600,margin:"0 auto",padding:"16px 14px 100px"}}>
+
+        {/* ═══ EDITOR ═══ */}
+        {tab==="builder"&&(
+          <div>
+            <div style={{fontSize:12,color:"#555",marginBottom:14}}>
+              Configurá cada día y agregá tus ejercicios. Luego guardá en la nube.
+            </div>
+            {data.days.map((d,di)=>{
+              const c=DAY_COLORS[di%DAY_COLORS.length];
+              return (
+                <div key={d.id} style={{background:"#0d0d1f",borderRadius:14,border:`1px solid ${c}30`,marginBottom:12,overflow:"hidden"}}>
+                  <div style={{padding:"12px 14px",background:`${c}18`,borderBottom:`1px solid ${c}25`,
+                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:700,color:c}}>{d.label}</div>
+                      <div style={{fontSize:11,color:"#555",marginTop:2}}>{d.focus||"Sin enfoque definido"}</div>
+                    </div>
+                    <Btn small outline color={c} onClick={()=>openDayEdit(di)}>Editar</Btn>
+                  </div>
+                  {d.exercises.length===0?(
+                    <div style={{padding:16,fontSize:12,color:"#2a2a40",textAlign:"center"}}>Sin ejercicios aún</div>
+                  ):(
+                    d.exercises.map((ex,ei)=>(
+                      <div key={ex.id||ei} style={{padding:"10px 14px",
+                        borderBottom:ei<d.exercises.length-1?"1px solid #111120":"none",
+                        display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                          <button onClick={()=>moveEx(di,ei,-1)} style={{background:"none",border:"none",color:"#333",fontSize:12,cursor:"pointer",lineHeight:1}}>▲</button>
+                          <button onClick={()=>moveEx(di,ei,1)}  style={{background:"none",border:"none",color:"#333",fontSize:12,cursor:"pointer",lineHeight:1}}>▼</button>
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:600,color:"#e0e0f0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.name}</div>
+                          <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
+                            <Chip bg="#1a2a1a" color="#27a86e" text={`${ex.sets}×${ex.reps}`}/>
+                            <Chip bg="#1a1a2a" color="#555" text={ex.rest}/>
+                          </div>
+                          {ex.note&&<div style={{fontSize:10,color:"#444",marginTop:3}}>💡 {ex.note}</div>}
+                        </div>
+                        <div style={{display:"flex",gap:8,flexShrink:0}}>
+                          <button onClick={()=>openEditEx(di,ei)} style={{background:"none",border:"none",color:"#666",fontSize:16,cursor:"pointer"}}>✏️</button>
+                          <button onClick={()=>deleteEx(di,ei)}   style={{background:"none",border:"none",color:"#c0392b",fontSize:16,cursor:"pointer"}}>🗑</button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div style={{padding:"10px 14px"}}>
+                    <Btn small outline color={c} onClick={()=>openNewEx(di)}>+ Agregar ejercicio</Btn>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{padding:14,background:"#0d0d1f",borderRadius:12,border:"1px solid #1e1e3a",fontSize:11,color:"#444",lineHeight:1.7,marginTop:4}}>
+              💡 Cuando termines tocá <b style={{color:"#27a86e"}}>⬆ Guardar</b> arriba. En otro dispositivo abrí esta misma URL y tocá <b style={{color:"#2f7ee8"}}>⬇ Cargar</b>.
+            </div>
+          </div>
+        )}
+
+        {/* ═══ RUTINA ═══ */}
+        {tab==="rutina"&&(
+          <div>
+            {totalEx===0?(
+              <div style={{textAlign:"center",padding:"50px 0"}}>
+                <div style={{fontSize:50,marginBottom:14}}>🏋️</div>
+                <div style={{fontSize:15,color:"#555",marginBottom:20}}>Tu rutina está vacía</div>
+                <Btn onClick={()=>setTab("builder")}>Ir al Editor</Btn>
+              </div>
+            ):(
+              <>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+                  {data.days.map((d,di)=>{
+                    const c=DAY_COLORS[di%DAY_COLORS.length];
+                    return <button key={d.id} onClick={()=>setSelDay(di)} style={{
+                      padding:"8px 16px",borderRadius:20,border:"none",
+                      background:selDay===di?c:"#1a1a2e",
+                      color:selDay===di?"#fff":"#777",
+                      fontSize:13,fontWeight:600,cursor:"pointer",
+                    }}>{d.label}</button>;
+                  })}
+                </div>
+                <div style={{background:"#0d0d1f",borderRadius:14,border:`1px solid ${color}30`,overflow:"hidden"}}>
+                  <div style={{padding:"14px 16px",background:`${color}20`,borderBottom:`1px solid ${color}30`}}>
+                    <div style={{fontSize:16,fontWeight:700,color}}>{day.label}</div>
+                    <div style={{fontSize:12,color:"#888",marginTop:3}}>{day.focus||"—"}</div>
+                  </div>
+                  {day.exercises.length===0?(
+                    <div style={{padding:20,textAlign:"center",fontSize:13,color:"#333"}}>
+                      Sin ejercicios. <span onClick={()=>setTab("builder")} style={{color:"#e85d2f",cursor:"pointer"}}>Editor →</span>
+                    </div>
+                  ):(
+                    day.exercises.map((ex,ei)=>(
+                      <div key={ex.id||ei} style={{padding:"14px 16px",borderBottom:ei<day.exercises.length-1?"1px solid #111120":"none"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                          <div style={{fontSize:14,fontWeight:600,color:"#e0e0f0",flex:1}}>{ex.name}</div>
+                          <div style={{display:"flex",gap:6,flexShrink:0}}>
+                            <Chip bg="#1a2a1a" color="#27a86e" text={`${ex.sets}×${ex.reps}`}/>
+                            <Chip bg="#1a1a2a" color="#555" text={ex.rest}/>
+                          </div>
+                        </div>
+                        {ex.note&&<div style={{fontSize:11,color:"#444",marginTop:5}}>💡 {ex.note}</div>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ═══ ENTRENO ═══ */}
+        {tab==="entreno"&&(
+          <div>
+            {totalEx===0?(
+              <div style={{textAlign:"center",padding:"50px 0"}}>
+                <div style={{fontSize:50,marginBottom:14}}>📋</div>
+                <div style={{fontSize:15,color:"#555",marginBottom:20}}>Primero armá tu rutina</div>
+                <Btn onClick={()=>setTab("builder")}>Ir al Editor</Btn>
+              </div>
+            ):(
+              <>
+                <div style={{display:"flex",gap:8,marginBottom:14}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#555",marginBottom:5}}>Semana</div>
+                    <select value={selWeek} onChange={e=>setSelWeek(Number(e.target.value))} style={sSt}>
+                      {WEEKS.map((w,i)=><option key={i} value={i}>{w}</option>)}
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"#555",marginBottom:5}}>Día</div>
+                    <select value={selDay} onChange={e=>setSelDay(Number(e.target.value))} style={sSt}>
+                      {data.days.map((d,i)=><option key={i} value={i}>{d.label}{d.focus?` · ${d.focus}`:""}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {day.exercises.map((ex,ei)=>{
+                  const sets=parseInt(ex.sets)||3;
+                  const pb=prevBest(day.id,ei);
+                  return (
+                    <div key={ex.id||ei} style={{background:"#0d0d1f",borderRadius:14,border:`1px solid ${color}25`,marginBottom:12,overflow:"hidden"}}>
+                      <div style={{padding:"11px 14px",background:`${color}10`,borderBottom:`1px solid ${color}20`}}>
+                        <div style={{fontSize:14,fontWeight:600,color:"#e0e0f0"}}>{ex.name}</div>
+                        <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
+                          <Chip bg="#1a2a1a" color="#27a86e" text={`${ex.sets}×${ex.reps}`}/>
+                          <Chip bg="#1a1a2a" color="#555" text={`Descanso ${ex.rest}`}/>
+                          {pb>0&&<Chip bg="#1a1824" color="#e8a62f" text={`Mejor prev: ${pb}kg`}/>}
+                        </div>
+                      </div>
+                      <div style={{padding:"12px 14px"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"36px 1fr 1fr",gap:6,marginBottom:8,fontSize:11,color:"#333"}}>
+                          <span/><span>Peso (kg)</span><span>Reps</span>
+                        </div>
+                        {Array.from({length:sets}).map((_,si)=>{
+                          const l=getLog(selWeek,day.id,ei,si);
+                          return (
+                            <div key={si} style={{display:"grid",gridTemplateColumns:"36px 1fr 1fr",gap:6,marginBottom:6,alignItems:"center"}}>
+                              <span style={{fontSize:11,color:"#444"}}>S{si+1}</span>
+                              <input type="number" inputMode="decimal" placeholder="—" defaultValue={l.weight||""}
+                                onBlur={e=>setLog(selWeek,day.id,ei,si,"weight",e.target.value)} style={cSt}/>
+                              <input type="number" inputMode="numeric" placeholder="—" defaultValue={l.reps||""}
+                                onBlur={e=>setLog(selWeek,day.id,ei,si,"reps",e.target.value)} style={cSt}/>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div style={{background:"#0d0d1f",borderRadius:12,border:"1px solid #1e1e3a",padding:14}}>
+                  <div style={{fontSize:11,color:"#555",marginBottom:6}}>📝 Notas de la sesión</div>
+                  <textarea defaultValue={getNote(selWeek,day.id)}
+                    onBlur={e=>setNote(selWeek,day.id,e.target.value)}
+                    placeholder="¿Cómo te sentiste? ¿PRs? ¿Algo a mejorar?"
+                    style={{...iSt,minHeight:80,resize:"vertical"}}/>
+                </div>
+
+                <div style={{marginTop:14,textAlign:"center"}}>
+                  <Btn onClick={handleSave} disabled={busy} style={{width:"100%",padding:"12px"}}>
+                    {syncSt==="saving"?"Guardando...":"⬆ Guardar sesión en Google Sheets"}
+                  </Btn>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ═══ PROGRESO ═══ */}
+        {tab==="progreso"&&(
+          <div>
+            {totalEx===0?(
+              <div style={{textAlign:"center",padding:"50px 0"}}>
+                <div style={{fontSize:50,marginBottom:14}}>📊</div>
+                <div style={{fontSize:15,color:"#555",marginBottom:20}}>Armá tu rutina primero</div>
+                <Btn onClick={()=>setTab("builder")}>Ir al Editor</Btn>
+              </div>
+            ):(
+              <>
+                <div style={{fontSize:11,color:"#555",marginBottom:14}}>Volumen total por día · 12 semanas</div>
+                {data.days.map((d,di)=>{
+                  if(d.exercises.length===0)return null;
+                  const c=DAY_COLORS[di%DAY_COLORS.length];
+                  const vols=WEEKS.map((_,wi)=>weekVolume(di,wi));
+                  const maxV=Math.max(...vols,1);
+                  const hasData=vols.some(v=>v>0);
+                  const filled=vols.map((v,i)=>v>0?i:-1).filter(i=>i>=0);
+                  const last2=filled.slice(-2);
+                  const trend=last2.length===2?vols[last2[1]]-vols[last2[0]]:0;
+                  return (
+                    <div key={d.id} style={{background:"#0d0d1f",borderRadius:12,border:`1px solid ${c}25`,padding:14,marginBottom:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                        <div>
+                          <span style={{fontSize:13,fontWeight:600,color:"#e0e0f0"}}>{d.label}</span>
+                          {d.focus&&<span style={{fontSize:11,color:"#444",marginLeft:6}}>{d.focus}</span>}
+                        </div>
+                        <span style={{fontSize:11,color:trend>0?"#27a86e":trend<0?"#e85d2f":"#555"}}>
+                          {!hasData?"Sin datos":trend>0?`▲ +${Math.round(trend)}`:trend<0?`▼ ${Math.round(trend)}`:"→ Estable"}
+                        </span>
+                      </div>
+                      {!hasData?(
+                        <div style={{fontSize:11,color:"#1e1e30",textAlign:"center",padding:"6px 0"}}>Registrá series en Entreno</div>
+                      ):(
+                        <div style={{display:"flex",gap:3,alignItems:"flex-end",height:56}}>
+                          {vols.map((v,wi)=>(
+                            <div key={wi} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                              <div style={{width:"100%",height:v>0?`${Math.max(4,(v/maxV)*50)}px`:2,
+                                borderRadius:3,background:v>0?c:"#1a1a2e",transition:"height .3s"}}/>
+                              <span style={{fontSize:8,color:"#252535"}}>S{wi+1}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div style={{background:"#0d0d1f",borderRadius:12,border:"1px solid #1e1e3a",padding:14,marginTop:4}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#888",marginBottom:12,textTransform:"uppercase",letterSpacing:1}}>🏆 PRs por ejercicio</div>
+                  {data.days.flatMap((d)=>
+                    d.exercises.map((ex,ei)=>{
+                      let best={weight:0,reps:0,week:-1};
+                      for(let wi=0;wi<WEEK_COUNT;wi++) for(let si=0;si<10;si++){
+                        const l=data.logs[lk(wi,d.id,ei,si)]||{};
+                        const w=parseFloat(l.weight)||0,r=parseFloat(l.reps)||0;
+                        if(w>best.weight||(w===best.weight&&r>best.reps))best={weight:w,reps:r,week:wi};
+                      }
+                      if(best.weight===0)return null;
+                      return (
+                        <div key={`${d.id}-${ei}`} style={{display:"flex",justifyContent:"space-between",
+                          alignItems:"center",padding:"9px 0",borderBottom:"1px solid #111120"}}>
+                          <div>
+                            <div style={{fontSize:13,color:"#e0e0f0"}}>{ex.name}</div>
+                            <div style={{fontSize:10,color:"#444"}}>{d.label}</div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:14,fontWeight:700,color:"#e8a62f"}}>{best.weight} kg</div>
+                            <div style={{fontSize:10,color:"#444"}}>{best.reps} reps · S{best.week+1}</div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* modal: edit day */}
+      {editDayModal!==null&&(
+        <Modal title={`Editar ${data.days[editDayModal].label}`} onClose={()=>setEditDayModal(null)}>
+          <Field label="Nombre del día">
+            <input value={dayForm.label} onChange={e=>setDayForm(p=>({...p,label:e.target.value}))} style={iSt} placeholder="Ej: Día 1, Lunes..."/>
+          </Field>
+          <Field label="Músculo / enfoque">
+            <input value={dayForm.focus} onChange={e=>setDayForm(p=>({...p,focus:e.target.value}))} style={iSt} placeholder="Ej: Pecho · Tríceps"/>
+          </Field>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
+            <Btn outline small color="#555" onClick={()=>setEditDayModal(null)}>Cancelar</Btn>
+            <Btn small onClick={saveDayEdit}>Guardar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* modal: add/edit exercise */}
+      {editExModal!==null&&(
+        <Modal title={editExModal.ei===null?"Nuevo ejercicio":"Editar ejercicio"} onClose={()=>setEditExModal(null)}>
+          <Field label="Nombre *">
+            <input value={exForm.name||""} onChange={e=>setExForm(p=>({...p,name:e.target.value}))} style={iSt} placeholder="Ej: Press Banca con Barra"/>
+          </Field>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            <Field label="Series">
+              <input value={exForm.sets||""} onChange={e=>setExForm(p=>({...p,sets:e.target.value}))} style={iSt} placeholder="4"/>
+            </Field>
+            <Field label="Reps">
+              <input value={exForm.reps||""} onChange={e=>setExForm(p=>({...p,reps:e.target.value}))} style={iSt} placeholder="8–12"/>
+            </Field>
+            <Field label="Descanso">
+              <input value={exForm.rest||""} onChange={e=>setExForm(p=>({...p,rest:e.target.value}))} style={iSt} placeholder="90 seg"/>
+            </Field>
+          </div>
+          <Field label="Nota técnica (opcional)">
+            <input value={exForm.note||""} onChange={e=>setExForm(p=>({...p,note:e.target.value}))} style={iSt} placeholder="Ej: ROM completo, codo fijo..."/>
+          </Field>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
+            <Btn outline small color="#555" onClick={()=>setEditExModal(null)}>Cancelar</Btn>
+            <Btn small onClick={saveEx} style={{opacity:exForm.name?.trim()?1:0.4}}>
+              {editExModal.ei===null?"Agregar":"Guardar"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
