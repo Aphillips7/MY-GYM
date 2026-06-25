@@ -48,7 +48,7 @@ const uid = () => Math.random().toString(36).slice(2,8);
 // ── Google Sheets sync (fetch directo — funciona fuera de iframe) ─────────────
 async function sheetsPost(data) {
   const res = await fetch(SCRIPT_URL, {
-    method:"POST" 
+    method:"POST",
     body:JSON.stringify(data),
     mode:"cors",
   });
