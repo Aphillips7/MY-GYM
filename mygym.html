@@ -27,7 +27,7 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJyODJy2h9CI8HatJXx
 const LOCAL_KEY  = "mygym_v1";
 const WEEK_COUNT = 12;
 const WEEKS      = Array.from({length:WEEK_COUNT},(_,i)=>`Semana ${i+1}`);
-const DAY_COLORS = ["#e85d2f","#2f7ee8","#27a86e","#c94fca","#e8a62f","#4fc9ca"];
+const DAY_COLORS = ["#FFFFFF","#9DA29E","#E8EAE8","#6E726F","#C8CEC9","#4A4F4B"];
 
 // ── persistence ───────────────────────────────────────────────────────────────
 const loadLocal = () => { try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||"{}");}catch{return{};} };
@@ -69,7 +69,7 @@ const Chip = ({bg,color,text}) => (
   </span>
 );
 
-const Btn = ({children,onClick,color="#e85d2f",outline,small,disabled,style={}}) => (
+const Btn = ({children,onClick,color="#FFFFFF",outline,small,disabled,style={}}) => (
   <button onClick={onClick} disabled={disabled} style={{
     padding:small?"5px 12px":"9px 18px", borderRadius:8,
     border:outline?`1px solid ${color}60`:"none",
@@ -220,7 +220,7 @@ function App() {
   const totalEx = data.days.reduce((a,d)=>a+d.exercises.length,0);
   const busy  = syncSt==="saving"||syncSt==="loading";
 
-  const syncColor = {idle:"#555",saving:"#e8a62f",loading:"#2f7ee8",ok:"#27a86e",error:"#e85d2f"}[syncSt]||"#555";
+  const syncColor = {idle:"#555",saving:"#C8CEC9",loading:"#9DA29E",ok:"#E8EAE8",error:"#FFFFFF"}[syncSt]||"#555";
   const syncText  = {idle:"☁️ Nube",saving:"⏳ Guardando...",loading:"⏳ Cargando...",ok:"✅ Sync OK",error:"❌ Error"}[syncSt]||"☁️";
 
   return (
@@ -230,8 +230,8 @@ function App() {
       {/* toast */}
       {toast&&(
         <div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",
-          background:toast.ok?"#0a1f0a":"#1f0a0a",
-          border:`1px solid ${toast.ok?"#27a86e":"#e85d2f"}`,
+          background:toast.ok?"#1c1f1d":"#1c1f1d",
+          border:`1px solid ${toast.ok?"#E8EAE8":"#FFFFFF"}`,
           color:"#F0F2F0",padding:"10px 20px",borderRadius:12,
           fontSize:13,fontWeight:600,zIndex:300,whiteSpace:"nowrap",
           boxShadow:"0 4px 24px rgba(0,0,0,.7)"}}>
@@ -246,7 +246,7 @@ function App() {
         <div style={{maxWidth:600,margin:"0 auto",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:20,fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>
-              <span style={{color:"#e85d2f"}}>MY</span>GYM
+              <span style={{color:"#FFFFFF"}}>MY</span>GYM
             </div>
             <div style={{fontSize:10,color:"#444",marginTop:1}}>
               {totalEx===0?"Configurá tu rutina en Editor →":`${totalEx} ejercicios · 6 días · Frecuencia 2`}
@@ -255,8 +255,8 @@ function App() {
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
             <span style={{fontSize:10,color:syncColor,fontWeight:600}}>{syncText}</span>
             <div style={{display:"flex",gap:6}}>
-              <Btn small outline color="#2f7ee8" onClick={handleLoad} disabled={busy}>⬇ Cargar</Btn>
-              <Btn small color="#27a86e" onClick={handleSave} disabled={busy}>⬆ Guardar</Btn>
+              <Btn small outline color="#9DA29E" onClick={handleLoad} disabled={busy}>⬇ Cargar</Btn>
+              <Btn small color="#E8EAE8" onClick={handleSave} disabled={busy}>⬆ Guardar</Btn>
             </div>
           </div>
         </div>
@@ -268,9 +268,9 @@ function App() {
           {[{id:"rutina",label:"Rutina"},{id:"entreno",label:"Entreno"},{id:"progreso",label:"Progreso"},{id:"builder",label:"Editor"}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
               flex:1,padding:"12px 4px",border:"none",background:"transparent",
-              color:tab===t.id?"#e85d2f":"#555",
+              color:tab===t.id?"#FFFFFF":"#555",
               fontSize:12,fontWeight:tab===t.id?700:400,
-              borderBottom:tab===t.id?"2px solid #e85d2f":"2px solid transparent",
+              borderBottom:tab===t.id?"2px solid #FFFFFF":"2px solid transparent",
               cursor:"pointer",
             }}>{t.label}</button>
           ))}
@@ -311,14 +311,14 @@ function App() {
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:13,fontWeight:600,color:"#F0F2F0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.name}</div>
                           <div style={{display:"flex",gap:5,marginTop:4,flexWrap:"wrap"}}>
-                            <Chip bg="#1a2a1a" color="#27a86e" text={`${ex.sets}×${ex.reps}`}/>
-                            <Chip bg="#1a1a2a" color="#555" text={ex.rest}/>
+                            <Chip bg="#23271f" color="#E8EAE8" text={`${ex.sets}×${ex.reps}`}/>
+                            <Chip bg="#23271f" color="#555" text={ex.rest}/>
                           </div>
                           {ex.note&&<div style={{fontSize:10,color:"#444",marginTop:3}}>💡 {ex.note}</div>}
                         </div>
                         <div style={{display:"flex",gap:8,flexShrink:0}}>
                           <button onClick={()=>openEditEx(di,ei)} style={{background:"none",border:"none",color:"#666",fontSize:16,cursor:"pointer"}}>✏️</button>
-                          <button onClick={()=>deleteEx(di,ei)}   style={{background:"none",border:"none",color:"#c0392b",fontSize:16,cursor:"pointer"}}>🗑</button>
+                          <button onClick={()=>deleteEx(di,ei)}   style={{background:"none",border:"none",color:"#F0F2F0",fontSize:16,cursor:"pointer"}}>🗑</button>
                         </div>
                       </div>
                     ))
@@ -330,7 +330,7 @@ function App() {
               );
             })}
             <div style={{padding:14,background:"#1c1f1d",borderRadius:12,border:"1px solid #363a37",fontSize:11,color:"#444",lineHeight:1.7,marginTop:4}}>
-              💡 Cuando termines tocá <b style={{color:"#27a86e"}}>⬆ Guardar</b> arriba. En otro dispositivo abrí esta misma URL y tocá <b style={{color:"#2f7ee8"}}>⬇ Cargar</b>.
+              💡 Cuando termines tocá <b style={{color:"#E8EAE8"}}>⬆ Guardar</b> arriba. En otro dispositivo abrí esta misma URL y tocá <b style={{color:"#9DA29E"}}>⬇ Cargar</b>.
             </div>
           </div>
         )}
@@ -364,7 +364,7 @@ function App() {
                   </div>
                   {day.exercises.length===0?(
                     <div style={{padding:20,textAlign:"center",fontSize:13,color:"#333"}}>
-                      Sin ejercicios. <span onClick={()=>setTab("builder")} style={{color:"#e85d2f",cursor:"pointer"}}>Editor →</span>
+                      Sin ejercicios. <span onClick={()=>setTab("builder")} style={{color:"#FFFFFF",cursor:"pointer"}}>Editor →</span>
                     </div>
                   ):(
                     day.exercises.map((ex,ei)=>(
@@ -372,8 +372,8 @@ function App() {
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                           <div style={{fontSize:14,fontWeight:600,color:"#F0F2F0",flex:1}}>{ex.name}</div>
                           <div style={{display:"flex",gap:6,flexShrink:0}}>
-                            <Chip bg="#1a2a1a" color="#27a86e" text={`${ex.sets}×${ex.reps}`}/>
-                            <Chip bg="#1a1a2a" color="#555" text={ex.rest}/>
+                            <Chip bg="#23271f" color="#E8EAE8" text={`${ex.sets}×${ex.reps}`}/>
+                            <Chip bg="#23271f" color="#555" text={ex.rest}/>
                           </div>
                         </div>
                         {ex.note&&<div style={{fontSize:11,color:"#444",marginTop:5}}>💡 {ex.note}</div>}
@@ -420,9 +420,9 @@ function App() {
                       <div style={{padding:"11px 14px",background:`${color}10`,borderBottom:`1px solid ${color}20`}}>
                         <div style={{fontSize:14,fontWeight:600,color:"#F0F2F0"}}>{ex.name}</div>
                         <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
-                          <Chip bg="#1a2a1a" color="#27a86e" text={`${ex.sets}×${ex.reps}`}/>
-                          <Chip bg="#1a1a2a" color="#555" text={`Descanso ${ex.rest}`}/>
-                          {pb>0&&<Chip bg="#1a1824" color="#e8a62f" text={`Mejor prev: ${pb}kg`}/>}
+                          <Chip bg="#23271f" color="#E8EAE8" text={`${ex.sets}×${ex.reps}`}/>
+                          <Chip bg="#23271f" color="#555" text={`Descanso ${ex.rest}`}/>
+                          {pb>0&&<Chip bg="#1c1f1d" color="#C8CEC9" text={`Mejor prev: ${pb}kg`}/>}
                         </div>
                       </div>
                       <div style={{padding:"12px 14px"}}>
@@ -492,7 +492,7 @@ function App() {
                           <span style={{fontSize:13,fontWeight:600,color:"#F0F2F0"}}>{d.label}</span>
                           {d.focus&&<span style={{fontSize:11,color:"#444",marginLeft:6}}>{d.focus}</span>}
                         </div>
-                        <span style={{fontSize:11,color:trend>0?"#27a86e":trend<0?"#e85d2f":"#555"}}>
+                        <span style={{fontSize:11,color:trend>0?"#E8EAE8":trend<0?"#FFFFFF":"#555"}}>
                           {!hasData?"Sin datos":trend>0?`▲ +${Math.round(trend)}`:trend<0?`▼ ${Math.round(trend)}`:"→ Estable"}
                         </span>
                       </div>
@@ -504,7 +504,7 @@ function App() {
                             <div key={wi} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                               <div style={{width:"100%",height:v>0?`${Math.max(4,(v/maxV)*50)}px`:2,
                                 borderRadius:3,background:v>0?c:"#2b2e2c",transition:"height .3s"}}/>
-                              <span style={{fontSize:8,color:"#252535"}}>S{wi+1}</span>
+                              <span style={{fontSize:8,color:"#363a37"}}>S{wi+1}</span>
                             </div>
                           ))}
                         </div>
@@ -532,7 +532,7 @@ function App() {
                             <div style={{fontSize:10,color:"#444"}}>{d.label}</div>
                           </div>
                           <div style={{textAlign:"right"}}>
-                            <div style={{fontSize:14,fontWeight:700,color:"#e8a62f"}}>{best.weight} kg</div>
+                            <div style={{fontSize:14,fontWeight:700,color:"#C8CEC9"}}>{best.weight} kg</div>
                             <div style={{fontSize:10,color:"#444"}}>{best.reps} reps · S{best.week+1}</div>
                           </div>
                         </div>
